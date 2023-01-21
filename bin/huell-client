@@ -1,0 +1,32 @@
+#!perl
+use v5.36.0;
+
+# This should be shell or something. -- rjbs, 2023-01-21
+
+use Getopt::Long::Descriptive;
+use HTTP::Tiny;
+
+my ($opt, $usage) = describe_options(
+  '%c %o',
+  [ 'room=s',   'what room',   { required => 1 } ],
+  [ 'preset=s', 'what preset', { required => 1 } ],
+  [ 'port=i',   'what port runs service', { default => 5010 } ],
+);
+
+my $port    = $opt->port;
+my $room    = $opt->room;
+my $preset  = $opt->preset;
+
+my $res = HTTP::Tiny->new->put(
+  "http://localhost:$port/lights",
+  {
+    headers => { 'Content-Type' => 'application/json' },
+    content => qq!{"room":"$room","preset":"$preset"}!,
+  },
+);
+
+unless ($res->{success}) {
+  die "It didn't work!\n\n" . $res->{content};
+}
+
+say "Update sent!";
