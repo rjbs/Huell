@@ -1,0 +1,30 @@
+#!perl
+use v5.30.0;
+use warnings;
+
+use Getopt::Long::Descriptive;
+use Future::AsyncAwait;
+
+use Huell::Util 'rgb_to_xy';
+use Huell::Agent;
+
+my ($opt, $usage) = describe_options(
+  '%c %o PRESET-NAME',
+  [ 'group=s', 'what group to operate on', { default => "Office" } ],
+);
+
+$usage->die unless @ARGV == 1;
+
+my $agent  = Huell::Agent->from_config_file('hue.yaml');
+
+my $preset = $agent->preset_named($ARGV[0]);
+
+die "unknown setting\n" unless $preset;
+
+my @groups = await $agent->get_groups;
+
+my ($group) = grep {; $_->name eq $opt->group } @groups;
+
+die "Couldn't find requested group!\n" unless $group;
+
+await $group->set_state($preset);
