@@ -10,7 +10,7 @@ use Huell::Agent;
 
 my ($opt, $usage) = describe_options(
   '%c %o PRESET-NAME',
-  [ 'group=s', 'what group to operate on', { default => "Office" } ],
+  [ 'room=s', 'what room to operate on', { default => "Office" } ],
 );
 
 $usage->die unless @ARGV == 1;
@@ -21,10 +21,10 @@ my $preset = $agent->preset_named($ARGV[0]);
 
 die "unknown setting\n" unless $preset;
 
-my @groups = await $agent->get_groups;
+my @rooms = await $agent->get_rooms;
 
-my ($group) = grep {; $_->name eq $opt->group } @groups;
+my ($room) = grep {; $_->name eq $opt->room } @rooms;
 
-die "Couldn't find requested group!\n" unless $group;
+die "Couldn't find requested room!\n" unless $room;
 
-await $group->set_state($preset);
+await $room->set_state($preset);

@@ -7,7 +7,7 @@ use Moose;
 use experimental 'signatures';
 
 use Future::AsyncAwait;
-use Huell::Group;
+use Huell::Room;
 use Huell::Util qw(rgb_to_xy);
 use IO::Async::Loop;
 use IO::Socket::SSL qw( SSL_VERIFY_NONE );
@@ -17,19 +17,18 @@ use URI;
 use YAML::XS ();
 
 sub from_config_file ($class, $filename) {
-  local $YAML::XS::Boolean = 'JSON::PP';
   my $config = YAML::XS::LoadFile($filename);
 
   return $class->new({
     address   => $config->{address},
-    username  => $config->{username},
+    key       => $config->{key},
     presets   => $config->{presets},
   });
 }
 
-has address   => (is => 'ro', isa => 'Str',     required => 1);
-has username  => (is => 'ro', isa => 'Str',     required => 1);
-has presets   => (is => 'ro', isa => 'HashRef', required => 1);
+has address => (is => 'ro', isa => 'Str',     required => 1);
+has key     => (is => 'ro', isa => 'Str',     required => 1);
+has presets => (is => 'ro', isa => 'HashRef', required => 1);
 
 sub preset_named ($self, $name) {
   my $presets = $self->presets;
@@ -38,18 +37,19 @@ sub preset_named ($self, $name) {
   return $self->state($presets->{$name});
 }
 
-async sub get_groups ($self) {
-  my $data = await $self->get('/groups');
+async sub get_rooms ($self) {
+  my $payload = await $self->get('/resource/room');
 
-  my @groups = map {;
-    Huell::Group->new({
-      id      => $_,
-      _attrs  => $data->{$_},
+  my @room_data = $payload->{data}->@*;
+
+  my @rooms = map {;
+    Huell::Room->new({
+      _attrs  => $_,
       _agent  => $self,
     })
-  } keys %$data;
+  } @room_data;
 
-  return @groups;
+  return @rooms;
 }
 
 has _http => (
@@ -74,27 +74,39 @@ sub state ($self, $input_attr) {
     $attr{xy} = rgb_to_xy(@$rgb);
   }
 
+  if (my $xy = $attr{xy}) {
+    my %color;
+    @color{qw(x y)} = @$xy;
+
+    $attr{color} = { xy => \%color };
+  }
+
+  if (exists $attr{on}) {
+    $attr{on} = { on => ($attr{on} ? JSON->true : JSON->false) };
+  }
+
   return {
-    on        => \1,
-    bri       => 254,
-    colormode => 'xy',
-    alert     => 'none',
-    effect    => 'none',
+    on        => { on => \1 },
+    dimming   => { brightness => 100 },
+    # alert     => 'none',
+    # effect    => 'none',
     %attr,
   };
 }
 
 sub _url ($self, $path) {
-  my $address   = $self->address;
-  my $username  = $self->username;
+  my $address = $self->address;
 
-  return "https://$address/api/$username$path";
+  return "https://$address/clip/v2$path";
 }
 
 async sub get ($self, $path) {
   my $res = await $self->_http->do_request(
     method  => 'GET',
     uri     => $self->_url($path),
+    headers => [
+      'hue-application-key' => $self->key,
+    ],
   );
 
   unless ($res->is_success) {
@@ -106,16 +118,20 @@ async sub get ($self, $path) {
   );
 }
 
-async sub post ($self, $path, $content) {
+async sub put ($self, $path, $content) {
   my $res = await $self->_http->do_request(
     method  => 'PUT',
     uri     => $self->_url($path),
     content => JSON::MaybeXS->new->encode($content),
     content_type => 'application/json',
+    headers => [
+      'hue-application-key' => $self->key,
+    ],
   );
 
   unless ($res->is_success) {
-    die "hue post failed";
+    warn $res->as_string;
+    die "hue put failed";
   }
 
   return JSON::MaybeXS->new->decode($res->decoded_content(charset => undef));
