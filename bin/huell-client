@@ -1,5 +1,7 @@
 #!perl
 use v5.36.0;
+# PODNAME: huell-client
+# ABSTRACT: tell the webservice to futz with the lights
 
 # This should be shell or something. -- rjbs, 2023-01-21
 
